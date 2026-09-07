@@ -9,11 +9,22 @@ object GpsStreamingProcessor {
     val spark = SparkSession.builder()
       .appName("Warsaw Transit Analytics - GPS Streaming")
       .master("local[*]")
+      .config("spark.sql.crossJoin.enabled", "true")
       .getOrCreate()
 
     spark.sparkContext.setLogLevel("WARN")
-
     import spark.implicits._
+
+    val distanceUdf = udf((lat1: Double, lon1: Double, lat2: Double, lon2: Double) => {
+      GeoUtils.haversine(lat1, lon1, lat2, lon2)
+    })
+
+    val stopsDF = spark.read.parquet("data/parquet/stops")
+      .select(
+        col("stop_name"),
+        col("stop_lat"),
+        col("stop_lon")
+      )
 
     val vehicleSchema = new StructType()
       .add("Brigade", StringType, nullable = true)
@@ -45,7 +56,15 @@ object GpsStreamingProcessor {
         to_timestamp($"vehicle.Time", "yyyy-MM-dd HH:mm:ss").as("event_time")
       )
 
-    val query = vehiclesDF.writeStream
+    val enrichedDF = vehiclesDF.join(
+      broadcast(stopsDF),
+      distanceUdf($"lat", $"lon", $"stop_lat", $"stop_lon") < 50.0, "left")
+      .withColumn(
+        "status", when($"stop_name".isNotNull, lit("AT_STOP")).otherwise(lit("IN_TRANSIT"))
+      )
+      .drop("stop_lat", "stop_lon")
+
+    val query = enrichedDF.writeStream
       .outputMode("append")
       .format("console")
       .option("truncate", "false")
