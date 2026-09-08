@@ -18,6 +18,7 @@ libraryDependencies ++= Seq(
   "org.scalatest" %% "scalatest" % "3.2.18" % Test,
   "org.apache.kafka" % "kafka-clients" % "3.7.0",
   "io.github.cdimascio" % "dotenv-java" % "3.2.0",
+  "net.sf.geographiclib" % "GeographicLib-Java" % "2.1"
 )
 
 fork := true
